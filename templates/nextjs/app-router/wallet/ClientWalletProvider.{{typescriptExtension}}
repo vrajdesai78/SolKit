@@ -1,0 +1,78 @@
+'use client';
+
+import React, { FC, ReactNode, useMemo } from 'react';
+import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
+import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
+import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
+import { clusterApiUrl } from '@solana/web3.js';
+{{#if projectInfo.hasTypeScript}}
+import {
+{{#each solanaConfig.wallets}}
+  {{#if @first}}{{else}},
+  {{/if}}{{.}}WalletAdapter{{/each}}
+} from '@solana/wallet-adapter-wallets';
+{{else}}
+import { 
+  PhantomWalletAdapter,
+  SolflareWalletAdapter,
+  BackpackWalletAdapter,
+  BraveWalletAdapter,
+  CoinbaseWalletAdapter,
+  SlopeWalletAdapter,
+  LedgerWalletAdapter
+} from '@solana/wallet-adapter-wallets';
+{{/if}}
+
+// Import wallet adapter styles
+import '@solana/wallet-adapter-react-ui/styles.css';
+
+{{#if projectInfo.hasTypeScript}}
+interface ClientWalletProviderProps {
+  children: ReactNode;
+}
+{{/if}}
+
+/**
+ * Client-side wallet provider component for Next.js
+ * This component must be used in a client component
+ */
+export const ClientWalletProvider: FC{{#if projectInfo.hasTypeScript}}<ClientWalletProviderProps>{{/if}} = ({ children }) => {
+  // Get network from environment variable or use default
+  const network = process.env.NEXT_PUBLIC_SOLANA_NETWORK || '{{solanaConfig.network}}';
+  
+  // Map network to WalletAdapterNetwork
+  const walletAdapterNetwork = useMemo(() => {
+    if (network === 'mainnet-beta') return WalletAdapterNetwork.Mainnet;
+    if (network === 'testnet') return WalletAdapterNetwork.Testnet;
+    if (network === 'devnet') return WalletAdapterNetwork.Devnet;
+    // Default to devnet if invalid network
+    return WalletAdapterNetwork.Devnet;
+  }, [network]);
+  
+  // Determine RPC endpoint
+  const endpoint = useMemo(() => {
+    if (process.env.NEXT_PUBLIC_SOLANA_RPC_URL) {
+      return process.env.NEXT_PUBLIC_SOLANA_RPC_URL;
+    }
+    return clusterApiUrl(walletAdapterNetwork);
+  }, [walletAdapterNetwork]);
+  
+  // Initialize wallet adapters
+  const wallets = useMemo(() => {
+    return [
+{{#each solanaConfig.wallets}}
+      new {{.}}WalletAdapter(),
+{{/each}}
+    ];
+  }, [walletAdapterNetwork]);
+  
+  return (
+    <ConnectionProvider endpoint={endpoint}>
+      <WalletProvider wallets={wallets} autoConnect>
+        <WalletModalProvider>
+          {children}
+        </WalletModalProvider>
+      </WalletProvider>
+    </ConnectionProvider>
+  );
+}; 

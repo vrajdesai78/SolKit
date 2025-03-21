@@ -1,0 +1,103 @@
+import React, { FC } from 'react';
+import { Connection } from '@solana/web3.js';
+import { useWallet } from '../wallet';
+import { useNFTs, NFT } from './useNFTs';
+
+interface NFTGalleryProps {
+  connection: Connection;
+}
+
+export const NFTGallery: FC<NFTGalleryProps> = ({ connection }) => {
+  const { connected } = useWallet();
+  const { nfts, loading, refresh } = useNFTs(connection);
+
+  if (!connected) {
+    return <div className="text-gray-500">Connect your wallet to view NFTs</div>;
+  }
+
+  if (loading) {
+    return <div className="text-gray-500">Loading NFTs...</div>;
+  }
+
+  if (nfts.length === 0) {
+    return <div className="text-gray-500">No NFTs found</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-semibold">Your NFT Collection</h2>
+        <button
+          onClick={refresh}
+          className="px-3 py-1 text-sm bg-indigo-100 text-indigo-700 rounded-md hover:bg-indigo-200 transition-colors"
+        >
+          Refresh
+        </button>
+      </div>
+      
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {nfts.map((nft) => (
+          <NFTCard key={nft.mint} nft={nft} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+interface NFTCardProps {
+  nft: NFT;
+}
+
+const NFTCard: FC<NFTCardProps> = ({ nft }) => {
+  const { mint, metadata, loading } = nft;
+  
+  if (loading) {
+    return (
+      <div className="border rounded-lg overflow-hidden bg-gray-50 animate-pulse">
+        <div className="w-full h-48 bg-gray-200"></div>
+        <div className="p-4">
+          <div className="h-5 bg-gray-200 rounded w-3/4 mb-2"></div>
+          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="border rounded-lg overflow-hidden bg-white hover:shadow-md transition-shadow">
+      {metadata?.image ? (
+        <div className="relative w-full h-48">
+          <img 
+            src={metadata.image} 
+            alt={metadata.name || 'NFT'}
+            className="w-full h-full object-cover"
+          />
+        </div>
+      ) : (
+        <div className="w-full h-48 bg-gray-100 flex items-center justify-center">
+          <span className="text-gray-400">No image</span>
+        </div>
+      )}
+      
+      <div className="p-4">
+        <h3 className="font-medium truncate">{metadata?.name || 'Unnamed NFT'}</h3>
+        <p className="text-sm text-gray-500 truncate">
+          {mint.substring(0, 4)}...{mint.substring(mint.length - 4)}
+        </p>
+        
+        {metadata?.attributes && metadata.attributes.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {metadata.attributes.slice(0, 2).map((attr, index) => (
+              <span 
+                key={index}
+                className="text-xs px-2 py-1 bg-gray-100 rounded-full"
+              >
+                {attr.trait_type}: {attr.value}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}; 

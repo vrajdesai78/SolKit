@@ -1,0 +1,79 @@
+import { useWallet as useSolanaWallet } from '@solana/wallet-adapter-react';
+import { useCallback, useMemo } from 'react';
+import { LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
+
+export function useWallet() {
+  const {
+    publicKey,
+    wallet,
+    disconnect,
+    connecting,
+    connected,
+    select,
+    connect,
+    signMessage,
+    signTransaction,
+    sendTransaction,
+  } = useSolanaWallet();
+
+  // Get wallet address as string or null
+  const address = useMemo(() => publicKey?.toBase58() || null, [publicKey]);
+
+  // Get shortened wallet address (e.g., "Addr...xyz")
+  const shortenedAddress = useMemo(() => {
+    if (!address) return null;
+    return `${address.slice(0, 4)}...${address.slice(-4)}`;
+  }, [address]);
+
+  // Format SOL balance with proper decimals
+  const formatBalance = useCallback((balance: number) => {
+    return (balance / LAMPORTS_PER_SOL).toLocaleString('en-US', {
+      maximumFractionDigits: 6,
+      minimumFractionDigits: 2,
+    });
+  }, []);
+
+  // Helper to validate a Solana address
+  const isValidAddress = useCallback((address: string): boolean => {
+    try {
+      new PublicKey(address);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }, []);
+
+  // Sign message and return signature
+  const signMessageHelper = useCallback(
+    async (message: Uint8Array): Promise<Uint8Array | null> => {
+      if (!signMessage) return null;
+      try {
+        return await signMessage(message);
+      } catch (error) {
+        console.error('Error signing message:', error);
+        return null;
+      }
+    },
+    [signMessage]
+  );
+
+  return {
+    // Original wallet adapter properties
+    publicKey,
+    wallet,
+    disconnect,
+    connecting,
+    connected,
+    select,
+    connect,
+    signMessage: signMessageHelper,
+    signTransaction,
+    sendTransaction,
+
+    // Additional helper properties and methods
+    address,
+    shortenedAddress,
+    formatBalance,
+    isValidAddress,
+  };
+} 

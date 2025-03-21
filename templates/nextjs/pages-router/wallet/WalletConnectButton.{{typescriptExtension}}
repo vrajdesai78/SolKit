@@ -1,0 +1,49 @@
+import React, { FC, MouseEventHandler, useCallback, useMemo } from 'react';
+import { Button, ButtonProps } from './ui/Button';
+import { useWallet } from './useWallet';
+import { useWalletModal } from '@solana/wallet-adapter-react-ui';
+
+export interface WalletConnectButtonProps extends ButtonProps {}
+
+export const WalletConnectButton: FC<WalletConnectButtonProps> = ({
+  children,
+  disabled,
+  onClick,
+  ...props
+}) => {
+  const { connected, wallet, disconnect } = useWallet();
+  const { setVisible } = useWalletModal();
+  
+  const handleClick: MouseEventHandler<HTMLButtonElement> = useCallback(
+    (event) => {
+      if (onClick) onClick(event);
+      if (!event.defaultPrevented) {
+        if (connected) {
+          disconnect().catch((error) => {
+            console.error('Error disconnecting wallet:', error);
+          });
+        } else {
+          setVisible(true);
+        }
+      }
+    },
+    [onClick, connected, setVisible, disconnect]
+  );
+
+  const content = useMemo(() => {
+    if (children) return children;
+    if (connected) return 'Disconnect';
+    return 'Connect Wallet';
+  }, [children, connected]);
+
+  return (
+    <Button
+      className="wallet-adapter-button wallet-adapter-button-trigger"
+      disabled={disabled || !wallet}
+      onClick={handleClick}
+      {...props}
+    >
+      {content}
+    </Button>
+  );
+}; 

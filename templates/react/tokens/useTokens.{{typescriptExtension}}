@@ -1,0 +1,274 @@
+import { 
+  PublicKey, 
+  Transaction, 
+  SystemProgram, 
+  LAMPORTS_PER_SOL 
+} from '@solana/web3.js';
+import { 
+  TOKEN_PROGRAM_ID, 
+  ASSOCIATED_TOKEN_PROGRAM_ID, 
+  getAssociatedTokenAddress, 
+  createAssociatedTokenAccountInstruction,
+  getOrCreateAssociatedTokenAccount,
+  createTransferInstruction,
+  getMint,
+  getAccount,
+  TokenAccountNotFoundError,
+  TokenInvalidAccountOwnerError
+} from '@solana/spl-token';
+import { useCallback, useEffect, useState } from 'react';
+import { useWallet } from '../wallet/useWallet';
+import { useTransaction } from '../transactions/useTransaction';
+
+{{#if projectInfo.hasTypeScript}}
+export interface TokenInfo {
+  mint: PublicKey;
+  symbol: string;
+  name: string;
+  decimals: number;
+  logoURI?: string;
+}
+
+export interface TokenBalance {
+  mint: PublicKey;
+  address: PublicKey;
+  amount: bigint;
+  decimals: number;
+  uiAmount: number;
+}
+
+export interface TokenAccounts {
+  [mintAddress: string]: TokenBalance;
+}
+{{/if}}
+
+/**
+ * Hook for working with SPL tokens on Solana
+ */
+export const useTokens = () => {
+  const { publicKey, connection } = useWallet();
+  const { sendTransaction } = useTransaction();
+  const [tokenAccounts, setTokenAccounts] = useState{{#if projectInfo.hasTypeScript}}<TokenAccounts>{{/if}}({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  /**
+   * Fetch all token accounts owned by the connected wallet
+   */
+  const fetchTokenAccounts = useCallback(async () => {
+    if (!publicKey) {
+      setTokenAccounts({});
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Get all token accounts for the connected wallet
+      const tokenAccountsResponse = await connection.getParsedTokenAccountsByOwner(
+        publicKey,
+        {
+          programId: TOKEN_PROGRAM_ID,
+        }
+      );
+
+      const accounts = {} as {{#if projectInfo.hasTypeScript}}TokenAccounts{{else}}any{{/if}};
+
+      // Process each token account
+      for (const { account, pubkey } of tokenAccountsResponse.value) {
+        const parsedAccountInfo = account.data.parsed.info;
+        const mintAddress = parsedAccountInfo.mint;
+        const decimals = parsedAccountInfo.tokenAmount.decimals;
+        const amount = BigInt(parsedAccountInfo.tokenAmount.amount);
+        
+        // Skip tokens with zero balance
+        if (amount === BigInt(0)) continue;
+
+        // Convert to human-readable amount
+        const uiAmount = Number(amount) / Math.pow(10, decimals);
+
+        accounts[mintAddress] = {
+          mint: new PublicKey(mintAddress),
+          address: pubkey,
+          amount,
+          decimals,
+          uiAmount,
+        };
+      }
+
+      setTokenAccounts(accounts);
+    } catch (err) {
+      console.error('Error fetching token accounts:', err);
+      setError(err instanceof Error ? err : new Error('Unknown error fetching token accounts'));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [connection, publicKey]);
+
+  /**
+   * Get or create an associated token account for a specific token mint
+   */
+  const getOrCreateTokenAccount = useCallback(
+    async (mint: {{#if projectInfo.hasTypeScript}}PublicKey | string{{else}}any{{/if}}) => {
+      if (!publicKey) {
+        throw new Error('Wallet not connected');
+      }
+
+      const mintPubkey = typeof mint === 'string' ? new PublicKey(mint) : mint;
+
+      try {
+        // Get or create the token account
+        const tokenAccount = await getOrCreateAssociatedTokenAccount(
+          connection,
+          {
+            publicKey,
+            signTransaction: async (tx) => {
+              return await sendTransaction(tx);
+            },
+          } as any,
+          mintPubkey,
+          publicKey
+        );
+
+        return tokenAccount;
+      } catch (error) {
+        console.error('Error getting or creating token account:', error);
+        throw error;
+      }
+    },
+    [connection, publicKey, sendTransaction]
+  );
+
+  /**
+   * Send tokens to a recipient
+   */
+  const sendTokens = useCallback(
+    async (
+      params: {{#if projectInfo.hasTypeScript}}{ 
+        mint: PublicKey | string; 
+        recipient: PublicKey | string; 
+        amount: number | bigint; 
+        decimals?: number; 
+      }{{else}}any{{/if}}
+    ) => {
+      if (!publicKey) {
+        throw new Error('Wallet not connected');
+      }
+
+      const { mint, recipient, amount } = params;
+      const mintPubkey = typeof mint === 'string' ? new PublicKey(mint) : mint;
+      const recipientPubkey = typeof recipient === 'string' ? new PublicKey(recipient) : recipient;
+
+      try {
+        // Get the mint info to get the decimals
+        let decimals = params.decimals;
+        if (decimals === undefined) {
+          const mintInfo = await getMint(connection, mintPubkey);
+          decimals = mintInfo.decimals;
+        }
+
+        // Convert amount to raw amount based on decimals
+        const rawAmount = typeof amount === 'number'
+          ? BigInt(Math.floor(amount * Math.pow(10, decimals)))
+          : amount;
+
+        // Get the source token account
+        const sourceAccount = await getOrCreateTokenAccount(mintPubkey);
+
+        // Get or create the destination token account
+        const destinationAccount = await getAssociatedTokenAddress(
+          mintPubkey,
+          recipientPubkey,
+          false,
+          TOKEN_PROGRAM_ID,
+          ASSOCIATED_TOKEN_PROGRAM_ID
+        );
+
+        // Check if destination account exists, if not we need to create it
+        const transaction = new Transaction();
+        
+        try {
+          await getAccount(connection, destinationAccount);
+        } catch (error) {
+          if (
+            error instanceof TokenAccountNotFoundError ||
+            error instanceof TokenInvalidAccountOwnerError
+          ) {
+            // Add instruction to create the associated token account
+            transaction.add(
+              createAssociatedTokenAccountInstruction(
+                publicKey,
+                destinationAccount,
+                recipientPubkey,
+                mintPubkey,
+                TOKEN_PROGRAM_ID,
+                ASSOCIATED_TOKEN_PROGRAM_ID
+              )
+            );
+          } else {
+            throw error;
+          }
+        }
+
+        // Add transfer instruction
+        transaction.add(
+          createTransferInstruction(
+            sourceAccount.address,
+            destinationAccount,
+            publicKey,
+            rawAmount,
+            [],
+            TOKEN_PROGRAM_ID
+          )
+        );
+
+        // Send the transaction
+        const signature = await sendTransaction(transaction, {
+          waitForConfirmation: true,
+        });
+
+        // Refresh token accounts after transfer
+        await fetchTokenAccounts();
+
+        return signature;
+      } catch (error) {
+        console.error('Error sending tokens:', error);
+        throw error;
+      }
+    },
+    [connection, publicKey, sendTransaction, getOrCreateTokenAccount, fetchTokenAccounts]
+  );
+
+  /**
+   * Get the UI amount for a token based on its raw amount and decimals
+   */
+  const getUIAmount = useCallback(
+    (amount: {{#if projectInfo.hasTypeScript}}bigint | number{{else}}any{{/if}}, decimals: number) => {
+      if (typeof amount === 'bigint') {
+        return Number(amount) / Math.pow(10, decimals);
+      }
+      return amount;
+    },
+    []
+  );
+
+  // Fetch token accounts when the wallet changes
+  useEffect(() => {
+    if (publicKey) {
+      fetchTokenAccounts();
+    } else {
+      setTokenAccounts({});
+    }
+  }, [publicKey, fetchTokenAccounts]);
+
+  return {
+    tokenAccounts,
+    isLoading,
+    error,
+    fetchTokenAccounts,
+    sendTokens,
+    getOrCreateTokenAccount,
+    getUIAmount,
+  };
+}; 

@@ -1,0 +1,80 @@
+import { useState, useEffect, useCallback } from 'react';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { useWallet } from '../wallet';
+
+export interface TokenInfo {
+  mint: string;
+  owner: string;
+  amount: number;
+  decimals: number;
+  uiAmount: number;
+}
+
+export function useTokenBalance(connection: Connection, mintAddress?: string) {
+  const { publicKey, connected } = useWallet();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const [tokenBalance, setTokenBalance] = useState<TokenInfo | null>(null);
+
+  const getTokenBalance = useCallback(async () => {
+    if (!connected || !publicKey || !mintAddress) {
+      setTokenBalance(null);
+      return null;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const mint = new PublicKey(mintAddress);
+      
+      // Find the token account for this wallet and mint
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+        publicKey,
+        { mint }
+      );
+      
+      if (tokenAccounts.value.length === 0) {
+        setTokenBalance(null);
+        setLoading(false);
+        return null;
+      }
+      
+      const tokenAccount = tokenAccounts.value[0];
+      const parsedInfo = tokenAccount.account.data.parsed.info;
+      
+      const tokenInfo: TokenInfo = {
+        mint: parsedInfo.mint,
+        owner: parsedInfo.owner,
+        amount: parsedInfo.tokenAmount.amount,
+        decimals: parsedInfo.tokenAmount.decimals,
+        uiAmount: parsedInfo.tokenAmount.uiAmount,
+      };
+      
+      setTokenBalance(tokenInfo);
+      setLoading(false);
+      return tokenInfo;
+    } catch (err) {
+      console.error('Error fetching token balance:', err);
+      setError(err as Error);
+      setLoading(false);
+      return null;
+    }
+  }, [connection, publicKey, mintAddress, connected]);
+
+  useEffect(() => {
+    if (connected && publicKey && mintAddress) {
+      getTokenBalance();
+    } else {
+      setTokenBalance(null);
+    }
+  }, [connected, publicKey, mintAddress, getTokenBalance]);
+
+  return {
+    tokenBalance,
+    loading,
+    error,
+    refresh: getTokenBalance,
+  };
+} 

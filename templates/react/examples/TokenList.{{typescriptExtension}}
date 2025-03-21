@@ -1,0 +1,120 @@
+import React, { FC, useEffect } from 'react';
+import { useTokens } from '../tokens/useTokens';
+import { TokenBalance } from '../tokens/TokenBalance';
+import { useWallet } from '../wallet/useWallet';
+
+/**
+ * Example component for displaying a list of tokens in the wallet
+ */
+export const TokenList: FC = () => {
+  const { publicKey } = useWallet();
+  const { tokenAccounts, fetchTokenAccounts, isLoading, error } = useTokens();
+
+  // Fetch token accounts when the component mounts or wallet changes
+  useEffect(() => {
+    if (publicKey) {
+      fetchTokenAccounts();
+    }
+  }, [publicKey, fetchTokenAccounts]);
+
+  // Convert token accounts object to an array
+  const tokens = Object.values(tokenAccounts);
+
+  // Render wallet not connected message
+  if (!publicKey) {
+    return (
+      <div className="token-list-container not-connected">
+        <h2>Your Token Balances</h2>
+        <p>Connect your wallet to view your tokens</p>
+      </div>
+    );
+  }
+
+  // Render loading state
+  if (isLoading) {
+    return (
+      <div className="token-list-container">
+        <h2>Your Token Balances</h2>
+        <div className="token-list-loading">
+          <p>Loading tokens...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Render error state
+  if (error) {
+    return (
+      <div className="token-list-container">
+        <h2>Your Token Balances</h2>
+        <div className="token-list-error">
+          <p>Error: {error.message}</p>
+          <button onClick={() => fetchTokenAccounts()}>Retry</button>
+        </div>
+      </div>
+    );
+  }
+
+  // Render empty state
+  if (tokens.length === 0) {
+    return (
+      <div className="token-list-container">
+        <h2>Your Token Balances</h2>
+        <div className="token-list-empty">
+          <p>No tokens found in this wallet</p>
+          <button onClick={() => fetchTokenAccounts()}>Refresh</button>
+        </div>
+      </div>
+    );
+  }
+
+  // Render token list
+  return (
+    <div className="token-list-container">
+      <h2>Your Token Balances</h2>
+      
+      <div className="token-list-controls">
+        <button onClick={() => fetchTokenAccounts()} className="refresh-button">
+          Refresh
+        </button>
+      </div>
+      
+      <div className="token-list">
+        <table>
+          <thead>
+            <tr>
+              <th>Token</th>
+              <th>Balance</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tokens.map((token) => (
+              <tr key={token.mint.toString()} className="token-list-item">
+                <td className="token-info">
+                  <div className="token-symbol">
+                    {token.mint.toString().substring(0, 4)}...{token.mint.toString().substring(token.mint.toString().length - 4)}
+                  </div>
+                </td>
+                <td className="token-balance">
+                  <TokenBalance
+                    mint={token.mint}
+                    formatter={(value) => value.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+                  />
+                </td>
+                <td className="token-actions">
+                  <button 
+                    className="view-button"
+                    onClick={() => window.open(`https://explorer.solana.com/address/${token.mint.toString()}`, '_blank')}
+                  >
+                    View
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}; 

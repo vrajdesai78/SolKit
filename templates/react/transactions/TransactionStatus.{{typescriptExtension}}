@@ -1,0 +1,152 @@
+import React, { FC, useEffect, useState } from 'react';
+import { useTransaction, TransactionStatus as ITransactionStatus } from './useTransaction';
+import { useWallet } from '../wallet/useWallet';
+
+{{#if projectInfo.hasTypeScript}}
+interface TransactionStatusProps {
+  signature?: string | null;
+  status?: ITransactionStatus;
+  autoRefresh?: boolean;
+  refreshInterval?: number;
+  showExplorerLink?: boolean;
+  className?: string;
+  onStatusChange?: (status: ITransactionStatus) => void;
+}
+{{/if}}
+
+/**
+ * Transaction status component that displays the current state of a transaction
+ */
+export const TransactionStatus: FC{{#if projectInfo.hasTypeScript}}<TransactionStatusProps>{{/if}} = ({
+  signature,
+  status: externalStatus,
+  autoRefresh = false,
+  refreshInterval = 5000,
+  showExplorerLink = true,
+  className = '',
+  onStatusChange,
+}) => {
+  const { getTransaction } = useTransaction();
+  const { connection } = useWallet();
+  const [localStatus, setLocalStatus] = useState{{#if projectInfo.hasTypeScript}}<ITransactionStatus | null>{{/if}}(null);
+  const [transactionTime, setTransactionTime] = useState<Date | null>(null);
+
+  // Use either the provided status or the local status
+  const status = externalStatus || localStatus;
+  const txSignature = signature || (status?.signature);
+
+  // Function to get Solana Explorer URL
+  const getExplorerUrl = (sig: string) => {
+    // Use appropriate cluster based on connection endpoint
+    const endpoint = connection.rpcEndpoint;
+    let cluster = 'mainnet';
+    
+    if (endpoint.includes('devnet')) {
+      cluster = 'devnet';
+    } else if (endpoint.includes('testnet')) {
+      cluster = 'testnet';
+    }
+    
+    return `https://explorer.solana.com/tx/${sig}?cluster=${cluster}`;
+  };
+
+  // Refresh transaction status periodically
+  useEffect(() => {
+    if (!txSignature || !autoRefresh) return;
+
+    const fetchTransactionStatus = async () => {
+      try {
+        const tx = await getTransaction(txSignature);
+        
+        if (tx) {
+          // Update transaction time if available
+          if (tx.blockTime) {
+            setTransactionTime(new Date(tx.blockTime * 1000));
+          }
+          
+          // Determine confirmation status
+          let confirmationStatus = tx.confirmationStatus;
+          
+          // Update local status
+          const newStatus = {
+            status: 'success',
+            signature: txSignature,
+            error: null,
+            confirmationStatus,
+          } as {{#if projectInfo.hasTypeScript}}ITransactionStatus{{else}}any{{/if}};
+          
+          setLocalStatus(newStatus);
+          if (onStatusChange) {
+            onStatusChange(newStatus);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching transaction status:', error);
+      }
+    };
+
+    // Initial fetch
+    fetchTransactionStatus();
+    
+    // Set up interval for periodic refresh
+    const intervalId = setInterval(fetchTransactionStatus, refreshInterval);
+    
+    return () => clearInterval(intervalId);
+  }, [txSignature, getTransaction, autoRefresh, refreshInterval, onStatusChange]);
+
+  if (!status || !status.status) {
+    return null;
+  }
+
+  // Render different status messages based on the transaction state
+  return (
+    <div className={`transaction-status transaction-status-${status.status} ${className}`}>
+      {status.status === 'idle' && (
+        <div className="transaction-status-message">Ready to submit transaction</div>
+      )}
+      
+      {status.status === 'processing' && (
+        <div className="transaction-status-message">
+          <span className="transaction-status-icon transaction-status-processing"></span>
+          Processing transaction...
+        </div>
+      )}
+      
+      {status.status === 'success' && (
+        <div className="transaction-status-container">
+          <div className="transaction-status-message">
+            <span className="transaction-status-icon transaction-status-success"></span>
+            Transaction {status.confirmationStatus === 'finalized' ? 'finalized' : 'successful'}
+            {transactionTime && ` at ${transactionTime.toLocaleTimeString()}`}
+          </div>
+          
+          {showExplorerLink && txSignature && (
+            <div className="transaction-explorer-link">
+              <a
+                href={getExplorerUrl(txSignature)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                View on Solana Explorer
+              </a>
+            </div>
+          )}
+          
+          {status.confirmationStatus && status.confirmationStatus !== 'finalized' && autoRefresh && (
+            <div className="transaction-confirmation-status">
+              Confirmation status: {status.confirmationStatus}
+              <div className="transaction-confirmation-progress"></div>
+            </div>
+          )}
+        </div>
+      )}
+      
+      {status.status === 'error' && (
+        <div className="transaction-status-message transaction-status-error">
+          <span className="transaction-status-icon transaction-status-error"></span>
+          Error: {status.error?.message || 'An unknown error occurred'}
+        </div>
+      )}
+    </div>
+  );
+}; 

@@ -1,0 +1,117 @@
+import { useState, useCallback } from 'react';
+import { 
+  PublicKey, 
+  Connection, 
+  Transaction, 
+  SystemProgram, 
+  LAMPORTS_PER_SOL,
+  TransactionInstruction
+} from '@solana/web3.js';
+import { useWallet } from '../wallet';
+
+export type TransactionStatus = 'idle' | 'processing' | 'success' | 'error';
+
+export interface TransactionResult {
+  signature: string | null;
+  error: Error | null;
+}
+
+export function useTransaction() {
+  const { publicKey, signTransaction, connected } = useWallet();
+  const [status, setStatus] = useState<TransactionStatus>('idle');
+  const [lastResult, setLastResult] = useState<TransactionResult>({
+    signature: null,
+    error: null,
+  });
+
+  const sendTransaction = useCallback(
+    async (
+      connection: Connection,
+      instructions: TransactionInstruction[],
+      signers?: Array<any>,
+      options?: any
+    ): Promise<TransactionResult> => {
+      if (!connected || !publicKey || !signTransaction) {
+        const error = new Error('Wallet not connected or missing capabilities');
+        setLastResult({ signature: null, error });
+        return { signature: null, error };
+      }
+
+      setStatus('processing');
+      
+      try {
+        // Create a new transaction
+        const transaction = new Transaction().add(...instructions);
+        
+        // Get the recent blockhash
+        const { blockhash } = await connection.getLatestBlockhash();
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = publicKey;
+
+        // Sign the transaction with any additional signers
+        if (signers && signers.length > 0) {
+          transaction.partialSign(...signers);
+        }
+
+        // Sign with the connected wallet
+        const signedTransaction = await signTransaction(transaction);
+        
+        // Send the signed transaction
+        const rawTransaction = signedTransaction.serialize();
+        const signature = await connection.sendRawTransaction(rawTransaction, options);
+        
+        // Wait for confirmation if requested
+        if (options?.skipPreflight !== true) {
+          await connection.confirmTransaction(signature);
+        }
+        
+        setStatus('success');
+        setLastResult({ signature, error: null });
+        return { signature, error: null };
+      } catch (error) {
+        console.error('Transaction error:', error);
+        setStatus('error');
+        setLastResult({ signature: null, error: error as Error });
+        return { signature: null, error: error as Error };
+      }
+    },
+    [publicKey, signTransaction, connected]
+  );
+
+  // Helper function to create a simple SOL transfer transaction
+  const transferSOL = useCallback(
+    async (
+      connection: Connection,
+      recipient: string, 
+      amount: number
+    ): Promise<TransactionResult> => {
+      try {
+        const recipientPubkey = new PublicKey(recipient);
+        const lamports = amount * LAMPORTS_PER_SOL;
+        
+        const instruction = SystemProgram.transfer({
+          fromPubkey: publicKey!,
+          toPubkey: recipientPubkey,
+          lamports,
+        });
+        
+        return sendTransaction(connection, [instruction]);
+      } catch (error) {
+        console.error('Transfer error:', error);
+        setStatus('error');
+        const typedError = error as Error;
+        setLastResult({ signature: null, error: typedError });
+        return { signature: null, error: typedError };
+      }
+    },
+    [publicKey, sendTransaction]
+  );
+
+  return {
+    sendTransaction,
+    transferSOL,
+    status,
+    lastResult,
+    isProcessing: status === 'processing',
+  };
+} 

@@ -1,0 +1,123 @@
+import { useState, useEffect, useCallback } from 'react';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { useWallet } from '../wallet';
+
+export interface NFTMetadata {
+  name?: string;
+  symbol?: string;
+  description?: string;
+  image?: string;
+  animation_url?: string;
+  external_url?: string;
+  attributes?: Array<{
+    trait_type: string;
+    value: string | number;
+  }>;
+}
+
+export interface NFT {
+  mint: string;
+  tokenAccount: string;
+  metadata?: NFTMetadata;
+  loading: boolean;
+}
+
+export function useNFTs(connection: Connection) {
+  const { publicKey, connected } = useWallet();
+  const [loading, setLoading] = useState(false);
+  const [nfts, setNfts] = useState<NFT[]>([]);
+  const [error, setError] = useState<Error | null>(null);
+
+  const fetchNFTs = useCallback(async () => {
+    if (!connected || !publicKey) {
+      setNfts([]);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Fetch token accounts owned by the user
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+        publicKey,
+        {
+          programId: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'), // Token Program ID
+        }
+      );
+
+      // Filter for NFTs (amount = 1 and decimals = 0)
+      const nftAccounts = tokenAccounts.value.filter((account) => {
+        const parsedInfo = account.account.data.parsed.info;
+        return (
+          parsedInfo.tokenAmount.amount === '1' &&
+          parsedInfo.tokenAmount.decimals === 0
+        );
+      });
+
+      // Create initial NFT objects
+      const initialNfts = nftAccounts.map((account) => {
+        const parsedInfo = account.account.data.parsed.info;
+        return {
+          mint: parsedInfo.mint,
+          tokenAccount: account.pubkey.toBase58(),
+          loading: true,
+        };
+      });
+
+      setNfts(initialNfts);
+
+      // Fetch metadata for each NFT
+      const metadataPromises = initialNfts.map(async (nft) => {
+        try {
+          // For simplicity, we're using a mock metadata fetch here
+          // In a real implementation, you would fetch from the Metaplex program
+          const mockMetadata: NFTMetadata = {
+            name: `NFT ${nft.mint.slice(0, 4)}`,
+            symbol: 'NFT',
+            description: 'A Solana NFT',
+            image: `https://picsum.photos/seed/${nft.mint}/300/300`,
+            attributes: [
+              { trait_type: 'Type', value: 'Image' },
+              { trait_type: 'Rarity', value: 'Common' },
+            ],
+          };
+
+          // Simulate network delay
+          await new Promise((resolve) => setTimeout(resolve, 500));
+
+          return {
+            ...nft,
+            metadata: mockMetadata,
+            loading: false,
+          };
+        } catch (error) {
+          console.error(`Error fetching metadata for ${nft.mint}:`, error);
+          return {
+            ...nft,
+            loading: false,
+          };
+        }
+      });
+
+      const nftsWithMetadata = await Promise.all(metadataPromises);
+      setNfts(nftsWithMetadata);
+    } catch (err) {
+      console.error('Error fetching NFTs:', err);
+      setError(err as Error);
+    } finally {
+      setLoading(false);
+    }
+  }, [connection, publicKey, connected]);
+
+  useEffect(() => {
+    fetchNFTs();
+  }, [fetchNFTs]);
+
+  return {
+    nfts,
+    loading,
+    error,
+    refresh: fetchNFTs,
+  };
+} 

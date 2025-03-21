@@ -1,0 +1,6 @@
+'use client';
+
+// Export all components and hooks for the wallet module
+export * from './ClientWalletProvider';
+export * from './useWallet';
+export * from './WalletConnectButton'; 

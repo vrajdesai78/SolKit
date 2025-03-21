@@ -1,0 +1,128 @@
+import React, { FC, useEffect } from 'react';
+import { useNFTs, NFT } from './useNFTs';
+
+{{#if projectInfo.hasTypeScript}}
+interface NFTGalleryProps {
+  className?: string;
+  showEmpty?: boolean;
+  emptyMessage?: string;
+  showLoading?: boolean;
+  loadingMessage?: string;
+  gridColumns?: number;
+  onSelectNFT?: (nft: NFT) => void;
+}
+{{/if}}
+
+/**
+ * Gallery component for displaying NFTs owned by the connected wallet
+ */
+export const NFTGallery: FC{{#if projectInfo.hasTypeScript}}<NFTGalleryProps>{{/if}} = ({
+  className = '',
+  showEmpty = true,
+  emptyMessage = 'No NFTs found',
+  showLoading = true,
+  loadingMessage = 'Loading NFTs...',
+  gridColumns = 3,
+  onSelectNFT,
+}) => {
+  const { nfts, isLoading, error, fetchNFTs } = useNFTs();
+
+  // Fetch NFTs on component mount
+  useEffect(() => {
+    fetchNFTs();
+  }, [fetchNFTs]);
+
+  // Handle NFT click
+  const handleNFTClick = (nft: {{#if projectInfo.hasTypeScript}}NFT{{else}}any{{/if}}) => {
+    if (onSelectNFT) {
+      onSelectNFT(nft);
+    }
+  };
+
+  // Define gallery grid style
+  const galleryStyle = {
+    display: 'grid',
+    gridTemplateColumns: `repeat(${gridColumns}, 1fr)`,
+    gap: '1rem',
+  };
+
+  // Show loading state
+  if (isLoading && showLoading) {
+    return (
+      <div className={`nft-gallery-loading ${className}`}>
+        <p>{loadingMessage}</p>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className={`nft-gallery-error ${className}`}>
+        <p>Error: {error.message}</p>
+      </div>
+    );
+  }
+
+  // Show empty state
+  if ((!nfts || nfts.length === 0) && showEmpty) {
+    return (
+      <div className={`nft-gallery-empty ${className}`}>
+        <p>{emptyMessage}</p>
+      </div>
+    );
+  }
+
+  // Render NFT gallery
+  return (
+    <div className={`nft-gallery ${className}`} style={galleryStyle}>
+      {nfts.map((nft) => (
+        <div
+          key={nft.mint.toString()}
+          className={`nft-card ${nft.isLoaded ? 'loaded' : ''} ${nft.error ? 'error' : ''}`}
+          onClick={() => handleNFTClick(nft)}
+        >
+          {nft.isFetching && (
+            <div className="nft-loading">Loading...</div>
+          )}
+          
+          {nft.error && (
+            <div className="nft-error">
+              <p>Failed to load</p>
+            </div>
+          )}
+          
+          {nft.isLoaded && !nft.error && (
+            <>
+              <div className="nft-image-container">
+                {nft.metadata.image ? (
+                  <img 
+                    src={nft.metadata.image} 
+                    alt={nft.metadata.name}
+                    className="nft-image"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = 'https://via.placeholder.com/300?text=Image+Error';
+                    }}
+                  />
+                ) : (
+                  <div className="nft-no-image">No Image</div>
+                )}
+              </div>
+              
+              <div className="nft-details">
+                <h3 className="nft-name">{nft.metadata.name}</h3>
+                {nft.metadata.symbol && (
+                  <p className="nft-symbol">{nft.metadata.symbol}</p>
+                )}
+                
+                {nft.metadata.description && (
+                  <p className="nft-description">{nft.metadata.description.substring(0, 100)}...</p>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}; 

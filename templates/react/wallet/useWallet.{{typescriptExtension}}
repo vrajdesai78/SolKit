@@ -1,0 +1,113 @@
+'use client';
+
+import {
+  useWallet as useWalletAdapter,
+  useConnection
+} from '@solana/wallet-adapter-react';
+import { 
+  PublicKey, 
+  Transaction, 
+  VersionedTransaction, 
+  TransactionMessage,
+  SystemProgram,
+  Connection
+} from '@solana/web3.js';
+import { useMemo, useCallback, useEffect, useState } from 'react';
+
+/**
+ * Enhanced wallet hook that extends the basic wallet adapter functionality
+ */
+export const useWallet = () => {
+  const walletAdapter = useWalletAdapter();
+  const { connection } = useConnection();
+
+  /**
+   * Get wallet balance in SOL
+   */
+  const getBalance = useCallback(async () => {
+    if (!walletAdapter.publicKey) {
+      return 0;
+    }
+
+    try {
+      const balance = await connection.getBalance(walletAdapter.publicKey);
+      return balance / 10 ** 9; // Convert lamports to SOL
+    } catch (error) {
+      console.error('Failed to get balance', error);
+      return 0;
+    }
+  }, [connection, walletAdapter.publicKey]);
+
+  /**
+   * Send SOL to specified address
+   */
+  const sendSol = useCallback(
+    async (
+      recipient: PublicKey | string,
+      amount: number,
+      options?: { confirmLevel?: 'processed' | 'confirmed' | 'finalized' }
+    ) => {
+      if (!walletAdapter.publicKey || !walletAdapter.signTransaction) {
+        throw new Error('Wallet not connected');
+      }
+
+      // Convert recipient to PublicKey if it's a string
+      const recipientKey = typeof recipient === 'string' ? new PublicKey(recipient) : recipient;
+
+      // Convert SOL to lamports
+      const lamports = amount * 10 ** 9;
+
+      // Create a transfer instruction
+      const transferInstruction = SystemProgram.transfer({
+        fromPubkey: walletAdapter.publicKey,
+        toPubkey: recipientKey,
+        lamports,
+      });
+
+      // Create transaction
+      const latestBlockhash = await connection.getLatestBlockhash();
+      const transaction = new Transaction().add(transferInstruction);
+      transaction.feePayer = walletAdapter.publicKey;
+      transaction.recentBlockhash = latestBlockhash.blockhash;
+
+      // Sign transaction
+      const signedTransaction = await walletAdapter.signTransaction(transaction);
+
+      // Send transaction
+      const txid = await connection.sendRawTransaction(signedTransaction.serialize());
+
+      // Confirm transaction if requested
+      if (options?.confirmLevel) {
+        await connection.confirmTransaction({
+          blockhash: latestBlockhash.blockhash,
+          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+          signature: txid,
+        }, options.confirmLevel);
+      }
+
+      return txid;
+    },
+    [connection, walletAdapter]
+  );
+
+  /**
+   * Simplified method to sign a transaction
+   */
+  const signTransaction = useCallback(
+    async (transaction: Transaction | VersionedTransaction) => {
+      if (!walletAdapter.signTransaction) {
+        throw new Error('Wallet does not support signing transactions');
+      }
+      return await walletAdapter.signTransaction(transaction);
+    },
+    [walletAdapter]
+  );
+
+  return {
+    ...walletAdapter,
+    getBalance,
+    sendSol,
+    signTransaction,
+    connection
+  };
+};

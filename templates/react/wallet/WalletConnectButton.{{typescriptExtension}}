@@ -1,0 +1,85 @@
+'use client';
+
+import React, { FC, useMemo } from 'react';
+import {
+  WalletMultiButton,
+  WalletDisconnectButton,
+} from '@solana/wallet-adapter-react-ui';
+import { useWallet } from './useWallet';
+
+{{#if projectInfo.hasTypeScript}}
+interface WalletConnectButtonProps {
+  variant?: 'default' | 'disconnect-only';
+  className?: string;
+  style?: React.CSSProperties;
+}
+{{/if}}
+
+/**
+ * Enhanced wallet connect button that provides connection status and balance display
+ */
+export const WalletConnectButton: FC{{#if projectInfo.hasTypeScript}}<WalletConnectButtonProps>{{/if}} = ({
+  variant = 'default',
+  className = '',
+  style = {},
+}) => {
+  const { connected, publicKey, getBalance } = useWallet();
+  const [balance, setBalance] = React.useState<number | null>(null);
+  
+  // Fetch wallet balance when connected
+  React.useEffect(() => {
+    if (connected && publicKey) {
+      const fetchBalance = async () => {
+        const currentBalance = await getBalance();
+        setBalance(currentBalance);
+      };
+      
+      fetchBalance();
+      
+      // Set up interval to update balance
+      const intervalId = setInterval(fetchBalance, 30000); // Every 30 seconds
+      
+      return () => clearInterval(intervalId);
+    } else {
+      setBalance(null);
+    }
+  }, [connected, publicKey, getBalance]);
+  
+  // Format the wallet address for display
+  const formattedAddress = useMemo(() => {
+    if (!publicKey) return '';
+    const address = publicKey.toString();
+    return `${address.slice(0, 4)}...${address.slice(-4)}`;
+  }, [publicKey]);
+  
+  // Custom styling for the wallet button
+  const buttonStyle = {
+    ...style,
+  };
+  
+  if (variant === 'disconnect-only' && connected) {
+    return (
+      <div className={`wallet-button-container ${className}`}>
+        {balance !== null && (
+          <div className="wallet-balance">
+            <span className="wallet-address">{formattedAddress}</span>
+            <span className="balance-amount">{balance.toFixed(4)} SOL</span>
+          </div>
+        )}
+        <WalletDisconnectButton style={buttonStyle} />
+      </div>
+    );
+  }
+  
+  return (
+    <div className={`wallet-button-container ${className}`}>
+      {connected && balance !== null && (
+        <div className="wallet-balance">
+          <span className="wallet-address">{formattedAddress}</span>
+          <span className="balance-amount">{balance.toFixed(4)} SOL</span>
+        </div>
+      )}
+      <WalletMultiButton style={buttonStyle} />
+    </div>
+  );
+}; 

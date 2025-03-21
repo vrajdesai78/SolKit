@@ -1,0 +1,30 @@
+'use client';
+
+import React from 'react';
+import { useWallet, WalletConnectButton } from '../solana/wallet';
+
+export const WalletExample: React.FC = () => {
+  const { connected, address, shortenedAddress } = useWallet();
+
+  return (
+    <div className="p-8 max-w-xl mx-auto">
+      <h1 className="text-2xl font-bold mb-6">Solana Wallet Example</h1>
+      
+      <div className="mb-6">
+        <WalletConnectButton variant="default" size="lg" className="w-full" />
+      </div>
+      
+      {connected && address && (
+        <div className="p-4 border rounded-md bg-gray-50">
+          <h2 className="text-lg font-semibold mb-2">Wallet Connected</h2>
+          <p className="mb-1">
+            <span className="font-medium">Address:</span> {shortenedAddress}
+          </p>
+          <p className="text-xs text-gray-500 break-all">
+            {address}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}; 

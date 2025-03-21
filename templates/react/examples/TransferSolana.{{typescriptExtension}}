@@ -1,0 +1,186 @@
+import React, { FC, useState } from 'react';
+import { useWallet } from '../wallet/useWallet';
+import { TransactionStatus } from '../transactions/TransactionStatus';
+import { PublicKey } from '@solana/web3.js';
+
+/**
+ * Example component for transferring SOL to another wallet
+ */
+export const TransferSolana: FC = () => {
+  const { publicKey, getBalance, sendSol } = useWallet();
+  const [recipient, setRecipient] = useState('');
+  const [amount, setAmount] = useState('');
+  const [balance, setBalance] = useState<number | null>(null);
+  const [signature, setSignature] = useState<string | null>(null);
+  const [status, setStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
+  const [error, setError] = useState<Error | null>(null);
+
+  // Fetch balance when the component mounts
+  React.useEffect(() => {
+    const fetchBalance = async () => {
+      if (!publicKey) return;
+      const bal = await getBalance();
+      setBalance(bal);
+    };
+
+    fetchBalance();
+    // Set up interval to refresh balance
+    const intervalId = setInterval(fetchBalance, 10000);
+    return () => clearInterval(intervalId);
+  }, [publicKey, getBalance]);
+
+  // Handle recipient address input
+  const handleRecipientChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setRecipient(e.target.value);
+  };
+
+  // Handle amount input
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Allow only numbers and decimal point
+    const value = e.target.value.replace(/[^0-9.]/g, '');
+    setAmount(value);
+  };
+
+  // Validate recipient address
+  const isValidRecipient = () => {
+    if (!recipient) return false;
+    try {
+      new PublicKey(recipient);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  };
+
+  // Validate amount
+  const isValidAmount = () => {
+    const amountNum = parseFloat(amount);
+    return (
+      !isNaN(amountNum) && 
+      amountNum > 0 && 
+      balance !== null && 
+      amountNum <= balance - 0.001 // Leave some SOL for fees
+    );
+  };
+
+  // Handle form submission
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!publicKey || !isValidRecipient() || !isValidAmount()) {
+      return;
+    }
+
+    setStatus('processing');
+    setError(null);
+    
+    try {
+      const sig = await sendSol(recipient, parseFloat(amount), {
+        confirmLevel: 'confirmed'
+      });
+      
+      setSignature(sig);
+      setStatus('success');
+      
+      // Refresh balance after transfer
+      const newBalance = await getBalance();
+      setBalance(newBalance);
+      
+      // Reset form
+      setAmount('');
+    } catch (err) {
+      console.error('Transfer failed:', err);
+      setStatus('error');
+      setError(err instanceof Error ? err : new Error('Transaction failed'));
+    }
+  };
+
+  // Determine if form can be submitted
+  const canSubmit = publicKey && isValidRecipient() && isValidAmount();
+  
+  // Render wallet not connected message
+  if (!publicKey) {
+    return (
+      <div className="transfer-form-container not-connected">
+        <h2>Transfer SOL</h2>
+        <p>Connect your wallet to transfer SOL</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="transfer-form-container">
+      <h2>Transfer SOL</h2>
+      
+      {balance !== null && (
+        <div className="wallet-balance">
+          Balance: <strong>{balance.toFixed(6)} SOL</strong>
+        </div>
+      )}
+      
+      <form onSubmit={handleSubmit} className="transfer-form">
+        <div className="form-group">
+          <label htmlFor="recipient">Recipient Address</label>
+          <input
+            id="recipient"
+            type="text"
+            value={recipient}
+            onChange={handleRecipientChange}
+            placeholder="Enter Solana address"
+            className={recipient && !isValidRecipient() ? 'input-error' : ''}
+            disabled={status === 'processing'}
+          />
+          {recipient && !isValidRecipient() && (
+            <div className="error-message">Invalid Solana address</div>
+          )}
+        </div>
+        
+        <div className="form-group">
+          <label htmlFor="amount">Amount (SOL)</label>
+          <input
+            id="amount"
+            type="text"
+            value={amount}
+            onChange={handleAmountChange}
+            placeholder="0.0"
+            className={amount && !isValidAmount() ? 'input-error' : ''}
+            disabled={status === 'processing'}
+          />
+          {amount && !isValidAmount() && (
+            <div className="error-message">
+              {parseFloat(amount) <= 0
+                ? 'Amount must be greater than 0'
+                : balance !== null && parseFloat(amount) > balance - 0.001
+                ? 'Insufficient balance (leave some SOL for fees)'
+                : 'Invalid amount'}
+            </div>
+          )}
+        </div>
+        
+        <button
+          type="submit"
+          className="transfer-button"
+          disabled={!canSubmit || status === 'processing'}
+        >
+          {status === 'processing' ? 'Processing...' : 'Transfer SOL'}
+        </button>
+      </form>
+      
+      {/* Transaction status display */}
+      {status !== 'idle' && (
+        <div className="transaction-status-container">
+          <TransactionStatus
+            signature={signature}
+            status={{
+              status,
+              signature,
+              error,
+              confirmationStatus: status === 'success' ? 'confirmed' : undefined
+            }}
+            autoRefresh={true}
+          />
+        </div>
+      )}
+    </div>
+  );
+}; 

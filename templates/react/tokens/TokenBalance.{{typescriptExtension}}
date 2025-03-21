@@ -1,0 +1,66 @@
+import React, { FC, useEffect, useState } from 'react';
+import { useTokens, TokenInfo } from './useTokens';
+import { PublicKey } from '@solana/web3.js';
+
+{{#if projectInfo.hasTypeScript}}
+interface TokenBalanceProps {
+  mint: PublicKey | string;
+  symbol?: string;
+  showSymbol?: boolean;
+  showLoader?: boolean;
+  className?: string;
+  decimals?: number;
+  formatter?: (value: number) => string;
+}
+{{/if}}
+
+/**
+ * Component to display the balance of a specific token
+ */
+export const TokenBalance: FC{{#if projectInfo.hasTypeScript}}<TokenBalanceProps>{{/if}} = ({
+  mint,
+  symbol,
+  showSymbol = true,
+  showLoader = true,
+  className = '',
+  decimals: providedDecimals,
+  formatter = (value) => value.toLocaleString(undefined, { maximumFractionDigits: 6 }),
+}) => {
+  const { tokenAccounts, fetchTokenAccounts, isLoading } = useTokens();
+  const [balance, setBalance] = useState<number | null>(null);
+  const [tokenSymbol, setTokenSymbol] = useState<string | null>(symbol || null);
+  
+  // Convert mint to string for lookup
+  const mintAddress = typeof mint === 'string' ? mint : mint.toString();
+  
+  // Fetch token accounts on mount and when mint changes
+  useEffect(() => {
+    fetchTokenAccounts();
+  }, [mintAddress, fetchTokenAccounts]);
+  
+  // Update balance when token accounts change
+  useEffect(() => {
+    if (tokenAccounts[mintAddress]) {
+      const tokenAccount = tokenAccounts[mintAddress];
+      setBalance(tokenAccount.uiAmount);
+    } else {
+      setBalance(0);
+    }
+  }, [tokenAccounts, mintAddress]);
+  
+  // Format the displayed balance
+  const formattedBalance = balance !== null ? formatter(balance) : '—';
+  
+  // Show loading state
+  if (isLoading && showLoader) {
+    return <span className={`token-balance-loading ${className}`}>Loading...</span>;
+  }
+  
+  // Render balance with optional symbol
+  return (
+    <span className={`token-balance ${className}`}>
+      {formattedBalance}
+      {showSymbol && tokenSymbol && <span className="token-symbol"> {tokenSymbol}</span>}
+    </span>
+  );
+}; 

@@ -1,0 +1,6 @@
+'use client';
+
+// Export all components and hooks from the wallet module
+export * from './SolanaProvider';
+export * from './useWallet';
+export * from './WalletConnectButton'; 

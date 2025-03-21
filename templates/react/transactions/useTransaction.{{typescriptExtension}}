@@ -1,0 +1,174 @@
+import { 
+  Transaction, 
+  VersionedTransaction, 
+  PublicKey, 
+  SendOptions 
+} from '@solana/web3.js';
+import { useCallback, useState } from 'react';
+import { useWallet } from '../wallet/useWallet';
+
+{{#if projectInfo.hasTypeScript}}
+export interface TransactionStatus {
+  status: 'idle' | 'processing' | 'success' | 'error';
+  signature: string | null;
+  error: Error | null;
+  confirmationStatus?: 'processed' | 'confirmed' | 'finalized' | null;
+}
+
+interface TransactionOptions extends SendOptions {
+  skipPreflight?: boolean;
+  preflightCommitment?: 'processed' | 'confirmed' | 'finalized';
+  maxRetries?: number;
+  waitForConfirmation?: boolean;
+  confirmationLevel?: 'processed' | 'confirmed' | 'finalized';
+}
+{{/if}}
+
+/**
+ * Hook for managing Solana transactions
+ */
+export const useTransaction = () => {
+  const { signTransaction, connection, publicKey } = useWallet();
+  const [status, setStatus] = useState{{#if projectInfo.hasTypeScript}}<TransactionStatus>{{/if}}({
+    status: 'idle',
+    signature: null,
+    error: null,
+    confirmationStatus: null
+  });
+
+  /**
+   * Reset transaction status to idle
+   */
+  const reset = useCallback(() => {
+    setStatus({
+      status: 'idle',
+      signature: null,
+      error: null,
+      confirmationStatus: null
+    });
+  }, []);
+
+  /**
+   * Send a transaction to the Solana blockchain
+   */
+  const sendTransaction = useCallback(
+    async (
+      transaction: {{#if projectInfo.hasTypeScript}}Transaction | VersionedTransaction{{else}}any{{/if}},
+      options?: {{#if projectInfo.hasTypeScript}}TransactionOptions{{else}}any{{/if}}
+    ) => {
+      if (!publicKey) {
+        throw new Error('Wallet not connected');
+      }
+
+      try {
+        setStatus({
+          status: 'processing',
+          signature: null,
+          error: null,
+          confirmationStatus: null
+        });
+
+        // Set transaction fee payer if not already set
+        if (transaction instanceof Transaction && !transaction.feePayer) {
+          transaction.feePayer = publicKey;
+        }
+
+        // Get recent blockhash if not already set
+        if (
+          transaction instanceof Transaction && 
+          !transaction.recentBlockhash
+        ) {
+          const { blockhash } = await connection.getLatestBlockhash(
+            options?.preflightCommitment || 'confirmed'
+          );
+          transaction.recentBlockhash = blockhash;
+        }
+
+        // Sign transaction
+        const signedTransaction = await signTransaction(transaction);
+
+        // Send transaction
+        const signature = await connection.sendRawTransaction(
+          signedTransaction.serialize(),
+          {
+            skipPreflight: options?.skipPreflight || false,
+            preflightCommitment: options?.preflightCommitment || 'confirmed',
+            maxRetries: options?.maxRetries || 3,
+            ...options
+          }
+        );
+
+        setStatus({
+          status: 'success',
+          signature,
+          error: null,
+          confirmationStatus: 'processed'
+        });
+
+        // Wait for confirmation if requested
+        if (options?.waitForConfirmation) {
+          const confirmationLevel = options?.confirmationLevel || 'confirmed';
+          const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash(
+            confirmationLevel
+          );
+
+          const confirmationResult = await connection.confirmTransaction(
+            {
+              blockhash,
+              lastValidBlockHeight,
+              signature,
+            },
+            confirmationLevel
+          );
+
+          if (confirmationResult.value.err) {
+            throw new Error(`Transaction failed: ${JSON.stringify(confirmationResult.value.err)}`);
+          }
+
+          setStatus({
+            status: 'success',
+            signature,
+            error: null,
+            confirmationStatus: confirmationLevel
+          });
+        }
+
+        return signature;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error : new Error('Unknown error');
+        setStatus({
+          status: 'error',
+          signature: null,
+          error: errorMessage,
+          confirmationStatus: null
+        });
+        throw error;
+      }
+    },
+    [connection, publicKey, signTransaction]
+  );
+
+  /**
+   * Get transaction details by signature
+   */
+  const getTransaction = useCallback(
+    async (signature: string) => {
+      try {
+        return await connection.getTransaction(signature, {
+          maxSupportedTransactionVersion: 0,
+        });
+      } catch (error) {
+        console.error('Error fetching transaction:', error);
+        return null;
+      }
+    },
+    [connection]
+  );
+
+  return {
+    sendTransaction,
+    getTransaction,
+    status,
+    reset,
+  };
+}; 
