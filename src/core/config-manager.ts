@@ -16,6 +16,8 @@ const DEFAULT_CONFIG: SolanaConfig = {
     tokens: false,
     nfts: false,
   },
+  useAppKit: true,
+  projectId: "b56e18d47c72ab683b10814fe9495694",
 };
 
 /**
@@ -87,7 +89,32 @@ export class ConfigManager {
         logger.error("Failed to create .env.local", error as Error);
       }
     } else {
-      logger.debug(".env.local already exists, not overwriting");
+      logger.debug(
+        ".env.local already exists, checking if AppKit env vars need to be added"
+      );
+
+      // If using AppKit, ensure the project ID is set in the existing .env.local file
+      if (config.useAppKit) {
+        try {
+          const currentEnv = await fs.readFile(envPath, "utf-8");
+
+          // Check if project ID is already set
+          if (!currentEnv.includes("NEXT_PUBLIC_PROJECT_ID=")) {
+            const updatedEnv =
+              currentEnv +
+              `\n# Reown AppKit Configuration\nNEXT_PUBLIC_PROJECT_ID=${
+                config.projectId || ""
+              }\n`;
+            await fs.writeFile(envPath, updatedEnv);
+            logger.success("Updated .env.local with AppKit project ID");
+          }
+        } catch (error) {
+          logger.error(
+            "Failed to update .env.local with AppKit configuration",
+            error as Error
+          );
+        }
+      }
     }
 
     // Always write .env.example
@@ -110,7 +137,7 @@ export class ConfigManager {
       localnet: "http://127.0.0.1:8899",
     };
 
-    return `# Solana Configuration
+    let content = `# Solana Configuration
 NEXT_PUBLIC_SOLANA_NETWORK=${config.network}
 NEXT_PUBLIC_SOLANA_RPC_URL=${networkUrls[config.network]}
 
@@ -120,5 +147,15 @@ SOLANA_PRIVATE_KEY=YOUR_PRIVATE_KEY_HERE
 # Note: Never commit private keys to source control
 # Use this file as a template and create a .env.local file with your actual keys
 `;
+
+    // Add AppKit project ID if using AppKit
+    if (config.useAppKit) {
+      content += `
+# Reown AppKit Configuration
+NEXT_PUBLIC_PROJECT_ID=${config.projectId || ""}
+`;
+    }
+
+    return content;
   }
 }

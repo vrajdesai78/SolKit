@@ -37,6 +37,7 @@ export class InitCommand {
         "-f, --framework <framework>",
         "Specify framework if detection fails"
       )
+      .option("--project-id <id>", "Reown AppKit project ID")
       .option("-y, --yes", "Skip confirmation prompts with default values")
       .option("-v, --verbose", "Enable verbose logging")
       .action(async (options) => {
@@ -117,21 +118,23 @@ export class InitCommand {
       // Get configuration
       let config = await ConfigManager.getConfig(projectInfo.projectRoot);
 
+      // Set default configuration
+      config.useAppKit = true; // Always use AppKit
+      config.projectId = config.projectId || "b56e18d47c72ab683b10814fe9495694";
+
       // Override config with command line options
       if (options.network) {
         config.network = options.network;
       }
 
-      if (options.transactions !== undefined) {
-        config.features.transactions = options.transactions;
-      }
+      // Features not relevant with AppKit
+      config.features.transactions = false;
+      config.features.tokens = false;
+      config.features.nfts = false;
 
-      if (options.tokens !== undefined) {
-        config.features.tokens = options.tokens;
-      }
-
-      if (options.nfts !== undefined) {
-        config.features.nfts = options.nfts;
+      // Set project ID if provided
+      if (options.projectId !== undefined) {
+        config.projectId = options.projectId;
       }
 
       // If not using --yes flag, prompt for configuration options
@@ -161,14 +164,19 @@ export class InitCommand {
       logger.success("Solana integration initialized successfully! 🚀");
       logger.info(`Network: ${config.network}`);
       logger.info("Features enabled:");
-      logger.info(` - Wallet Connection: ✅`);
-      logger.info(
-        ` - Transactions: ${config.features.transactions ? "✅" : "❌"}`
-      );
-      logger.info(
-        ` - Token Management: ${config.features.tokens ? "✅" : "❌"}`
-      );
-      logger.info(` - NFT Support: ${config.features.nfts ? "✅" : "❌"}`);
+      if (config.useAppKit) {
+        logger.info(` - Reown AppKit: ✅`);
+        logger.info(` - Project ID: ${config.projectId}`);
+      } else {
+        logger.info(` - Wallet Connection: ✅`);
+        logger.info(
+          ` - Transactions: ${config.features.transactions ? "✅" : "❌"}`
+        );
+        logger.info(
+          ` - Token Management: ${config.features.tokens ? "✅" : "❌"}`
+        );
+        logger.info(` - NFT Support: ${config.features.nfts ? "✅" : "❌"}`);
+      }
 
       return {
         success: true,
@@ -219,32 +227,43 @@ export class InitCommand {
         ],
       },
       {
+        type: "input",
+        name: "projectId",
+        message: "Enter Reown AppKit project ID:",
+        default: defaultConfig.projectId || "b56e18d47c72ab683b10814fe9495694",
+      },
+      {
         type: "confirm",
         name: "transactionsFeature",
         message: "Include transaction utilities?",
         default: defaultConfig.features.transactions,
+        when: (answers) => !answers.useAppKit, // Only ask if not using AppKit
       },
       {
         type: "confirm",
         name: "tokensFeature",
         message: "Include token management utilities?",
         default: defaultConfig.features.tokens,
+        when: (answers) => !answers.useAppKit, // Only ask if not using AppKit
       },
       {
         type: "confirm",
         name: "nftsFeature",
         message: "Include NFT support?",
         default: defaultConfig.features.nfts,
+        when: (answers) => !answers.useAppKit, // Only ask if not using AppKit
       },
     ]);
 
     return {
       network: answers.network,
       wallets: answers.wallets,
+      useAppKit: true, // Always use AppKit
+      projectId: answers.projectId,
       features: {
-        transactions: answers.transactionsFeature,
-        tokens: answers.tokensFeature,
-        nfts: answers.nftsFeature,
+        transactions: false, // Not needed with AppKit
+        tokens: false, // Not needed with AppKit
+        nfts: false, // Not needed with AppKit
       },
     };
   }

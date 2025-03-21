@@ -1,5 +1,5 @@
 {
-  "name": "solkit",
+  "name": "@vrajdesai78/solkit",
   "version": "0.1.0",
   "description": "CLI tool that automates the integration of Solana's Appkit into web projects",
   "main": "dist/index.js",
@@ -11,7 +11,21 @@
     "dev": "ts-node src/index.ts",
     "start": "node dist/index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "prepare": "npm run build",
+    "prepare-publish": "node scripts/prepare-publish.js"
+  },
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vrajdesai78/SolKit.git"
+  },
+  "homepage": "https://github.com/vrajdesai78/SolKit.git",
+  "bugs": {
+    "url": "https://github.com/vrajdesai78/SolKit/issues"
   },
   "keywords": [
     "solana",
@@ -23,7 +37,7 @@
     "nextjs",
     "vue"
   ],
-  "author": "",
+  "author": "Vraj Desai <vrajdesai78@gmail.com>",
   "license": "MIT",
   "dependencies": {
     "@solana/wallet-adapter-base": "^0.9.23",

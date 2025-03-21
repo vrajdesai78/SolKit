@@ -29,6 +29,11 @@ export interface ProjectInfo {
   packageJson: any;
   isNext13OrLater: boolean;
   isAppRouter: boolean;
+  // Metadata properties for templating
+  name?: string;
+  description?: string;
+  url?: string;
+  icon?: string;
 }
 
 /**
@@ -41,6 +46,18 @@ export interface SolanaConfig {
     transactions: boolean;
     tokens: boolean;
     nfts: boolean;
+  };
+  // Reown AppKit configuration
+  useAppKit?: boolean;
+  projectId?: string;
+  appKitConfig?: {
+    themeMode?: "light" | "dark";
+    analytics?: boolean;
+    accentColor?: string;
+    icon?: string;
+    name?: string;
+    description?: string;
+    url?: string;
   };
 }
 

@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { SolanaProvider } from '../solana/wallet';
+import ContextProvider from '@/context';
 
 export const metadata: Metadata = {
-  title: 'Solana App',
-  description: 'Solana integration with Next.js App Router',
+  title: '{{projectInfo.name}}',
+  description: '{{projectInfo.description}}',
 };
 
 export default function RootLayout({
@@ -15,9 +15,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <SolanaProvider>
+        <ContextProvider>
           {children}
-        </SolanaProvider>
+        </ContextProvider>
       </body>
     </html>
   );
